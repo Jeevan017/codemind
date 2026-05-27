@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Reset & Base ─────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  font-size: 13px;
+  scroll-behavior: smooth;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #F0F0F0;
+  color: #1A1A1A;
+  font-family: "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  height: 100%;
+  position: relative;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(26,26,26,0.05) 0.5px, transparent 0.5px);
+  background-size: 24px 24px;
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: -1;
+}
+
+#root {
+  height: 100%;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 3px; height: 3px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: #CCCCCC; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #E7473C; }
+
+/* ── Focus Ring ──────────────────────────────────────────── */
+/* Disabled globally — focus states are handled per-component via JS state */
+:focus-visible {
+  outline: none;
+}
+
+/* ── Safe Area ───────────────────────────────────────────── */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── Disable hover effects on touch devices ──────────────── */
+@media (hover: none) {
+  .hover-scale:hover { transform: none !important; }
+  .tooltip           { display: none !important; }
+}
+
+/* ── Word streaming animation ────────────────────────────── */
+@keyframes word-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.stream-word {
+  display: inline;
+  animation: word-fade 0.06s ease forwards;
+}
+
+/* ── Progress bar fill ───────────────────────────────────── */
+.progress-fill {
+  transition: width 0.3s ease;
+}
+
+/* ── Pulse skeleton ──────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, #E8E8E8 25%, #F0F0F0 50%, #E8E8E8 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Grid shimmer (empty state) ──────────────────────────── */
+@keyframes grid-shimmer {
+  0%,100% { opacity: 0.25; }
+  50%      { opacity: 0.55; }
+}
+.grid-shimmer { animation: grid-shimmer 4s ease-in-out infinite; }
+
+/* ── Sidebar transition ──────────────────────────────────── */
+.sidebar-transition {
+  transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Message bubble slide-up ─────────────────────────────── */
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.msg-in { animation: msg-in 0.25s ease forwards; }
+
+/* ── Send spin ───────────────────────────────────────────── */
+@keyframes send-spin {
+  0%   { transform: rotate(0deg) scale(1); }
+  50%  { transform: rotate(180deg) scale(0.85); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+.send-spin { animation: send-spin 0.35s ease forwards; }
+
+/* ── Bounce dots ─────────────────────────────────────────── */
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40%            { transform: translateY(-6px); }
+}
+.dot-bounce { animation: dot-bounce 1.2s ease infinite; }
+
+/* ── Monospace elements ──────────────────────────────────── */
+.font-mono, code, pre {
+  font-family: "JetBrains Mono", monospace;
+}
