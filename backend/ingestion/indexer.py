@@ -45,6 +45,7 @@ def _index_in_chroma(chunks: list[dict]):
             "chunk_index": chunk["chunk_index"]
         })
 
+    # add in batches of 100 to avoid memory issues
     batch_size = 100
     for i in range(0, len(ids), batch_size):
         collection.add(
@@ -68,6 +69,7 @@ def _index_in_bm25(chunks: list[dict]):
 
     bm25 = BM25Okapi(tokenized_corpus)
 
+    # save BM25 index and chunks to disk
     bm25_data = {
         "bm25": bm25,
         "chunks": chunks

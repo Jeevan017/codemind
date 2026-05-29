@@ -1,18 +1,15 @@
-﻿from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer
 from config import EMBEDDING_MODEL
-import threading
+import torch
 
 _model = None
-_model_lock = threading.Lock()
-
 
 def _get_embedding_model():
     global _model
-    with _model_lock:
-        if _model is None:
-            print(f"Loading embedding model: {EMBEDDING_MODEL}")
-            _model = SentenceTransformer(EMBEDDING_MODEL)
-            print("Embedding model loaded.")
+    if _model is None:
+        print(f"Loading embedding model: {EMBEDDING_MODEL}")
+        _model = SentenceTransformer(EMBEDDING_MODEL)
+        print("Embedding model loaded.")
     return _model
 
 
@@ -30,10 +27,11 @@ def embed_chunks(chunks: list[dict]) -> list[dict]:
         texts,
         batch_size=32,
         show_progress_bar=True,
-        convert_to_tensor=False,
-        normalize_embeddings=True
+        convert_to_tensor=False,  # keep as numpy for ChromaDB
+        normalize_embeddings=True  # normalize for better cosine similarity
     )
 
+    # attach embedding to each chunk
     for i, chunk in enumerate(chunks):
         chunk["embedding"] = embeddings[i].tolist()
 
@@ -42,7 +40,6 @@ def embed_chunks(chunks: list[dict]) -> list[dict]:
 
 
 def embed_query(query: str) -> list[float]:
-    model = _get_embedding_model()
     embedding = model.encode(
         query,
         normalize_embeddings=True,
