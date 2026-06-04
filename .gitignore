@@ -72,3 +72,11 @@ temp/
 # ─── HuggingFace Cache ─────────────────────────────
 .cache/
 ~/.cache/huggingface/
+backend/.env
+.env
+backend/__pycache__/
+backend/evaluation/ragas_results.txt
+backend/evaluation/eval_results.txt
+*.pyc
+*.pkl
+.vscode/

@@ -90,34 +90,39 @@ def _chunk_document(file: dict) -> list[dict]:
         elif ext in [".txt", ".md", ".rst"]:
             elements = partition_text(filename=filepath)
     except Exception as e:
-        print(f"Could not parse document {filepath}: {e}")
+        print(f"[CHUNKER] ERROR: Could not parse document {filepath}: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+    print(f"[CHUNKER] Extracted {len(elements)} elements from {file['filename']}")
+
+    full_text = " ".join(str(e).strip() for e in elements if str(e).strip())
+    print(f"[CHUNKER] Total characters extracted: {len(full_text)}")
+    print(f"[CHUNKER] First 500 chars: {full_text[:500]}")
+
+    if not full_text.strip():
+        print(f"[CHUNKER] ERROR: Empty text from {filepath} — file may be corrupted or image-based.")
         return []
 
     chunks = []
-    current_text = ""
+    start = 0
 
-    for element in elements:
-        text = str(element).strip()
-        if not text:
-            continue
+    while start < len(full_text):
+        end = start + CHUNK_SIZE
+        chunk_text = full_text[start:end].strip()
 
-        current_text += " " + text
-
-        if len(current_text) >= CHUNK_SIZE:
+        if chunk_text:
             chunks.append(_make_chunk(
-                text=current_text.strip(),
+                text=chunk_text,
                 file=file,
                 chunk_index=len(chunks)
             ))
-            current_text = ""
 
-    if current_text.strip():
-        chunks.append(_make_chunk(
-            text=current_text.strip(),
-            file=file,
-            chunk_index=len(chunks)
-        ))
+        # slide forward keeping overlap for context continuity
+        start += CHUNK_SIZE - CHUNK_OVERLAP
 
+    print(f"[CHUNKER] Created {len(chunks)} chunks from {file['filename']}")
     return chunks
 
 
