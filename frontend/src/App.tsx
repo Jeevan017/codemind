@@ -19,7 +19,7 @@ import { SidebarSkeleton } from "./components/SkeletonLoader"
 /* Lazy-load the heavy Sidebar */
 const Sidebar = lazy(() => import("./components/Sidebar"))
 
-const API = "http://127.0.0.1:8000"
+const API = "http://192.168.1.71:8000"
 
 let msgCounter = 0
 const newId = () => `msg-${++msgCounter}-${Date.now()}`

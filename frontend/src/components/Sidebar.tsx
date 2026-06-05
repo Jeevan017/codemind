@@ -21,7 +21,7 @@ import axios from "axios"
 import { IngestState } from "../types"
 import { FilterSkeleton } from "./SkeletonLoader"
 
-const API = "http://127.0.0.1:8000"
+const API = "http://192.168.1.71:8000"
 
 /* ── Detect touch device ─────────────────────────────────── */
 const isTouchDevice = () =>

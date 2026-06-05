@@ -1,163 +1,102 @@
-from groq import Groq
+﻿from groq import Groq
 from retrieval.hybrid_search import hybrid_search
 from retrieval.reranker import rerank
 from config import GROQ_API_KEY, GROQ_MODEL, TOP_K_RETRIEVAL
+import urllib.request
+import urllib.parse
+import json
 
 client = Groq(api_key=GROQ_API_KEY)
 
-SYSTEM_PROMPT = """You are CodeMind, an intelligent project assistant built to help developers understand any codebase, document, or project.
+SYSTEM_PROMPT = (
+    "You are CodeMind, an intelligent project assistant built to help developers "
+    "understand any codebase, document, or project.\n\n"
+    "CRITICAL ANTI-HALLUCINATION RULES:\n"
+    "- NEVER invent or fabricate filenames, file paths, page numbers, or section numbers\n"
+    "- NEVER cite a file that is not explicitly present in the provided context\n"
+    "- NEVER make up code snippets that are not in the context\n"
+    "- If you are not sure, say: I could not find this in the indexed documents\n"
+    "- If context is empty or irrelevant, say so clearly and do not guess\n\n"
+    "ANSWERING FROM INDEXED DOCUMENTS:\n"
+    "- Only use information explicitly present in the provided context\n"
+    "- Always cite the exact filename shown in the context\n"
+    "- For code questions, quote the relevant code snippet from context\n"
+    "- If context partially answers, say what was found and what was not\n\n"
+    "ANSWERING FROM WEB SEARCH:\n"
+    "- Clearly state the answer is from web search not indexed files\n"
+    "- Cite the web source URL when available\n\n"
+    "ANSWERING DIRECTLY:\n"
+    "- For greetings, simple math, or general knowledge answer directly\n"
+    "- Do NOT pretend to have searched any files when answering directly\n"
+    "- Do NOT say I found this in file.xyz when answering from general knowledge\n\n"
+    "WHEN INFORMATION IS NOT FOUND:\n"
+    "- Say exactly: I could not find this information in the indexed documents\n"
+    "- Do NOT guess or fabricate an answer\n"
+    "- Do NOT suggest the user check a fake file\n\n"
+    "TONE AND FORMAT:\n"
+    "- Be concise and technical\n"
+    "- Use bullet points for multi-part answers\n"
+    "- Use code blocks for code snippets\n"
+    "- Do not repeat the question back to the user\n"
+    "- Do not say Great question or use filler phrases\n\n"
+    "SPECIAL CASES:\n"
+    "- If asked what you are: say you are CodeMind, a project intelligence tool built with RAG\n"
+    "- If asked who built you: say you were built by Jeevan Kanugula\n"
+    "- If asked about your tech stack: say you use Hybrid Search, CRAG, RAGAS, Groq, ChromaDB\n"
+    "- If asked about your RAGAS scores: Answer Relevancy 0.91, Faithfulness 0.84, "
+    "Context Precision 0.54, Context Recall 0.47\n"
+    "- If user asks to summarize indexed files: do so based only on retrieved context"
+)
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-IDENTITY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- You are CodeMind, not a general purpose AI assistant
-- You specialize in answering questions about indexed project files
-- You have access to indexed documents and web search as fallback
-- You were built using RAG, hybrid search, and CRAG patterns
+SHOULD_RETRIEVE_PROMPT = (
+    "Given this user question, decide the best action.\n\n"
+    "Question: {question}\n\n"
+    "Reply with exactly one of these words:\n"
+    "- RETRIEVE: search the indexed project files\n"
+    "- WEBSEARCH: search the web for current or live information\n"
+    "- DIRECT: answer directly from general knowledge\n\n"
+    "Use DIRECT for:\n"
+    "- Greetings like hello, hi, how are you\n"
+    "- Simple math like 2+2\n"
+    "- Questions about CodeMind itself like who built it, what is CodeMind, what are your scores\n"
+    "- General programming concepts not requiring file search\n\n"
+    "Use WEBSEARCH for:\n"
+    "- Current prices, live data, today's date, recent news\n\n"
+    "Use RETRIEVE for:\n"
+    "- Questions about indexed codebase or uploaded documents\n\n"
+    "Reply with only one word."
+)
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CRITICAL ANTI-HALLUCINATION RULES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- NEVER invent or fabricate filenames, file paths, page numbers, section numbers, or line numbers
-- NEVER cite a file that is not explicitly present in the provided context
-- NEVER say "according to file.py page 23" unless that exact file and page appears in context
-- NEVER make up code snippets that are not in the context
-- NEVER assume what a file contains without it being in context
-- If you are not sure, say "I could not find this in the indexed documents"
-- If context is empty or irrelevant, say so clearly — do not guess
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ANSWERING FROM INDEXED DOCUMENTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- Only use information explicitly present in the provided context
-- Always cite the exact filename shown in the context like [Source: filename.py]
-- For code questions, quote the relevant code snippet from context
-- For document questions, summarize the relevant section from context
-- If multiple files have relevant info, cite all of them
-- Keep answers focused and technical
-- If the context partially answers the question, say what was found and what was not
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ANSWERING FROM WEB SEARCH
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- Clearly state the answer is from web search not indexed files
-- Cite the web source URL when available
-- For live data like prices or dates, state the time of retrieval
-- Do not mix web search answers with fake indexed file citations
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ANSWERING DIRECTLY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- For greetings, simple math, or general knowledge answer directly
-- Do NOT pretend to have searched any files when answering directly
-- Do NOT say "I found this in file.xyz" when answering from general knowledge
-- Keep direct answers short and clear
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WHEN INFORMATION IS NOT FOUND
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- Say exactly: "I could not find this information in the indexed documents."
-- Do NOT guess or fabricate an answer
-- Do NOT suggest the user check a fake file
-- You may suggest the user index relevant files if they have them
-- You may offer to search the web if the question is about live data
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TONE AND FORMAT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- Be concise and technical
-- Use bullet points for multi-part answers
-- Use code blocks for code snippets
-- Use plain language for explanations
-- Do not be overly verbose or pad answers
-- Do not repeat the question back to the user
-- Do not say "Great question!" or use filler phrases
-- Do not use excessive emojis
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SCOPE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- You are designed for developer and technical questions
-- You can answer questions about code, architecture, documentation, APIs, databases, and system design
-- For completely unrelated questions like cooking recipes or celebrity gossip, politely say that is outside your scope
-- For general programming questions not in indexed files, you may answer from general knowledge but be clear you are doing so
-- For questions about current events, prices, or live data, use web search fallback
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SPECIAL CASES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- If asked what you are: say you are CodeMind, a project intelligence tool built with RAG
-- If asked who built you: say you were built by Jeevan Kanugula
-- If asked about your tech stack: say you use Hybrid Search, CRAG, RAGAS evaluation, Groq, ChromaDB
-- If asked about your RAGAS scores: Answer Relevancy 0.91, Faithfulness 0.84, Context Precision 0.54, Context Recall 0.47
-- If user says thank you: respond briefly and professionally
-- If user asks to summarize indexed files: do so based only on retrieved context"""
-
-
-SHOULD_RETRIEVE_PROMPT = """Given this user question, decide the best action.
-
-Question: {question}
-
-Reply with exactly one of these words:
-- RETRIEVE: search the indexed project files
-- WEBSEARCH: search the web for current/live information
-- DIRECT: answer directly from general knowledge
-
-Guidelines:
-- RETRIEVE: questions about the indexed codebase, uploaded documents, project files
-- WEBSEARCH: current prices, live data, recent news, today's date, real-time info
-- DIRECT: greetings, simple math, general programming concepts
-
-Reply with only one word."""
-
-
-CONTEXT_QUALITY_PROMPT = """Given this question and retrieved context, 
-is the context sufficient to answer the question well?
-
-Question: {question}
-
-Retrieved context:
-{context}
-
-Reply with only one word: SUFFICIENT or INSUFFICIENT"""
+CONTEXT_QUALITY_PROMPT = (
+    "Given this question and retrieved context, "
+    "is the context sufficient to answer the question well?\n\n"
+    "Question: {question}\n\n"
+    "Retrieved context:\n{context}\n\n"
+    "Reply with only one word: SUFFICIENT or INSUFFICIENT"
+)
 
 
 def web_search(query: str, max_results: int = 3) -> list[dict]:
     try:
-        import urllib.request
-        import urllib.parse
-        import json
-
-        # use DuckDuckGo instant answer API — no auth needed
         encoded_query = urllib.parse.quote(query)
         url = f"https://api.duckduckgo.com/?q={encoded_query}&format=json&no_html=1&skip_disambig=1"
-
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "Mozilla/5.0 CodeMind/1.0"}
-        )
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 CodeMind/1.0"})
         with urllib.request.urlopen(req, timeout=10) as response:
             data = json.loads(response.read().decode())
 
         results = []
-
-        # abstract text — main answer
         if data.get("AbstractText"):
             results.append({
                 "title": data.get("AbstractSource", "DuckDuckGo"),
                 "body": data["AbstractText"],
                 "href": data.get("AbstractURL", "")
             })
-
-        # instant answer
         if data.get("Answer"):
             results.append({
                 "title": "Instant Answer",
                 "body": data["Answer"],
                 "href": ""
             })
-
-        # related topics
         for topic in data.get("RelatedTopics", [])[:2]:
             if isinstance(topic, dict) and topic.get("Text"):
                 results.append({
@@ -168,7 +107,6 @@ def web_search(query: str, max_results: int = 3) -> list[dict]:
 
         print(f"DuckDuckGo API returned {len(results)} results")
         if not results:
-            print("DuckDuckGo returned empty — trying fallback")
             return _fallback_search(query)
         return results
 
@@ -179,13 +117,8 @@ def web_search(query: str, max_results: int = 3) -> list[dict]:
 
 def _fallback_search(query: str) -> list[dict]:
     try:
-        import urllib.request
-        import urllib.parse
-        import json
-
         query_lower = query.lower()
 
-        # handle date/time queries with local IST time
         if any(word in query_lower for word in ["date", "time", "today", "now", "current time"]):
             from datetime import datetime
             import pytz
@@ -194,40 +127,30 @@ def _fallback_search(query: str) -> list[dict]:
             formatted = now.strftime("%A, %d %B %Y, %I:%M %p IST")
             return [{
                 "title": "Current Date and Time",
-                "body": f"Today's date and current time is: {formatted}.",
+                "body": f"Today is {formatted}.",
                 "href": ""
             }]
 
-        # handle crypto price queries
         if any(word in query_lower for word in ["bitcoin", "btc", "ethereum", "eth", "crypto", "price"]):
             coin = "bitcoin"
             if "ethereum" in query_lower or "eth" in query_lower:
                 coin = "ethereum"
             elif "solana" in query_lower:
                 coin = "solana"
-
             req = urllib.request.Request(
                 f"https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currencies=usd,inr",
                 headers={"User-Agent": "CodeMind/1.0"}
             )
             with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode())
-                if coin in data:
-                    usd = data[coin].get("usd", "N/A")
-                    inr = data[coin].get("inr", "N/A")
-                    return [{
-                        "title": f"{coin.title()} Price",
-                        "body": f"Current {coin.title()} price: ${usd} USD / ₹{inr} INR.",
-                        "href": "https://coingecko.com"
-                    }]
-
-        # handle weather queries
-        if any(word in query_lower for word in ["weather", "temperature", "forecast"]):
-            return [{
-                "title": "Weather",
-                "body": "For current weather information please check weather.com or Google Weather.",
-                "href": "https://weather.com"
-            }]
+            if coin in data:
+                usd = data[coin].get("usd", "N/A")
+                inr = data[coin].get("inr", "N/A")
+                return [{
+                    "title": f"{coin.title()} Price",
+                    "body": f"Current {coin.title()} price: ${usd} USD / Rs.{inr} INR.",
+                    "href": "https://coingecko.com"
+                }]
 
         return []
 
@@ -253,7 +176,6 @@ def ask(question: str, filters: dict = None) -> dict:
     if decision == "WEBSEARCH":
         return _handle_web_search(question)
 
-    # RETRIEVE path
     search_results = hybrid_search(question, TOP_K_RETRIEVAL, filters)
 
     if not search_results:
@@ -270,19 +192,15 @@ def ask(question: str, filters: dict = None) -> dict:
 
     context, sources = _build_context(reranked_results)
 
-    # check if context is sufficient
     quality = _check_context_quality(question, context)
     print(f"Context quality: {quality}")
 
     if quality == "INSUFFICIENT":
         print("Context insufficient — falling back to web search")
         web_result = _handle_web_search(question, fallback=True)
-
-        # combine indexed context with web search
         combined_answer = _generate_combined_answer(
             question, context, web_result["answer"]
         )
-
         return {
             "answer": combined_answer,
             "sources": sources + web_result.get("sources", []),
@@ -316,7 +234,6 @@ def _handle_web_search(question: str, fallback: bool = False) -> dict:
             "used_web_search": True
         }
 
-    # build context from web results
     web_context = ""
     web_sources = []
 
@@ -369,23 +286,6 @@ def _check_context_quality(question: str, context: str) -> str:
 
 
 def _should_retrieve(question: str) -> str:
-    # FIXED: check if documents are indexed first
-    # if yes, always RETRIEVE — do not let LLM route away from indexed docs
-    try:
-        import chromadb
-        from config import CHROMA_DB_PATH, CHROMA_COLLECTION_NAME
-        _check_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
-        _col = _check_client.get_or_create_collection(CHROMA_COLLECTION_NAME)
-        _count = _col.count()
-        print(f"[AGENT] ChromaDB has {_count} vectors indexed.")
-        if _count > 0:
-            print("[AGENT] Documents are indexed — forcing RETRIEVE decision.")
-            return "RETRIEVE"
-    except Exception as e:
-        print(f"[AGENT] Could not check ChromaDB count: {e}")
-
-    # nothing indexed — ask LLM to decide
-    print("[AGENT] No documents indexed — asking LLM for routing decision.")
     response = client.chat.completions.create(
         model=GROQ_MODEL,
         messages=[
@@ -397,10 +297,7 @@ def _should_retrieve(question: str) -> str:
         max_tokens=10,
         temperature=0
     )
-
     decision = response.choices[0].message.content.strip().upper()
-    print(f"[AGENT] LLM routing decision: {decision}")
-
     if decision not in ["RETRIEVE", "WEBSEARCH", "DIRECT"]:
         return "RETRIEVE"
     return decision
@@ -417,9 +314,7 @@ def _build_context(reranked_results: list[dict]) -> tuple[str, list[dict]]:
         filepath = chunk["filepath"]
         file_type = chunk["file_type"]
 
-        context_parts.append(
-            f"[Source {i+1}: {filename}]\n{text}\n"
-        )
+        context_parts.append(f"[Source {i+1}: {filename}]\n{text}\n")
 
         source = {
             "filename": filename,
@@ -444,14 +339,12 @@ def _generate_answer(question: str, context: str) -> str:
             },
             {
                 "role": "user",
-                "content": f"""Use the following context from the project files to answer the question.
-
-Context:
-{context}
-
-Question: {question}
-
-Answer clearly and cite the filenames you used."""
+                "content": (
+                    "Use the following context from the project files to answer the question.\n\n"
+                    f"Context:\n{context}\n\n"
+                    f"Question: {question}\n\n"
+                    "Answer clearly and cite the filenames you used."
+                )
             }
         ],
         max_tokens=1000,
@@ -472,14 +365,12 @@ def _generate_web_answer(question: str, web_context: str, fallback: bool) -> str
             },
             {
                 "role": "user",
-                "content": f"""{prefix}Use the following web search results to answer the question.
-
-Web Search Results:
-{web_context}
-
-Question: {question}
-
-Answer clearly and cite the web sources you used."""
+                "content": (
+                    f"{prefix}Use the following web search results to answer the question.\n\n"
+                    f"Web Search Results:\n{web_context}\n\n"
+                    f"Question: {question}\n\n"
+                    "Answer clearly and cite the web sources you used."
+                )
             }
         ],
         max_tokens=1000,
@@ -498,17 +389,13 @@ def _generate_combined_answer(question: str, doc_context: str, web_answer: str) 
             },
             {
                 "role": "user",
-                "content": f"""Combine these two sources to answer the question completely.
-
-From indexed project files:
-{doc_context}
-
-From web search:
-{web_answer}
-
-Question: {question}
-
-Provide a complete answer citing both indexed files and web sources where used."""
+                "content": (
+                    "Combine these two sources to answer the question completely.\n\n"
+                    f"From indexed project files:\n{doc_context}\n\n"
+                    f"From web search:\n{web_answer}\n\n"
+                    f"Question: {question}\n\n"
+                    "Provide a complete answer citing both indexed files and web sources where used."
+                )
             }
         ],
         max_tokens=1000,
