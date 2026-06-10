@@ -1,8 +1,4 @@
 {
-  "engines": {
-    "node": "22.19.0"
-  },
-
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
